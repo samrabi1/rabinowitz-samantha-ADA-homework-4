@@ -9,40 +9,268 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# Preliminaries
+
+Included in the R Markdown file but hidden from view to limit the length of this document is the loading of the following packages necessary to use the functions utilized in this assignment: *tidyverse*, *patchwork*, *scales*, *collapse*, *BBmisc*, *devtools*, and *tidycovid19*. Additionally, the code used to write the **cv_summary** function and organization of the data file included in the *tidycovid19* package are also not included in this final knit document.
+
+```{R, include=FALSE}
+library(tidyverse)
+library(patchwork) # for plotting
+library(scales) # for log y axis scale
+library(collapse) # for `fmode()` to find mode
+library(BBmisc) # for %nin%
+library(devtools)
+library(tidycovid19)
+
+merged <- download_merged_data(cached = TRUE)
+merged <- merged %>%
+  group_by(country, iso3c) %>%
+  arrange(country, iso3c, date) %>%
+  mutate(
+    daily_confirmed = confirmed - lag(confirmed, n = 1),
+    daily_deaths = deaths - lag(deaths, n = 1),
+    daily_recovered = recovered - lag(recovered, n = 1)
+  ) %>%
+  mutate(
+    daily_confirmed = replace_na(daily_confirmed, 0),
+    daily_deaths = replace_na(daily_deaths, 0),
+    daily_recovered = replace_na(daily_recovered, 0)
+  ) %>%
+  ungroup() %>%
+  arrange(country, iso3c, date)
+
+add_world1 <- merged %>%
+  group_by(date) %>%
+  arrange(date) %>%
+  summarize(
+    country = "World", iso3c = NA,
+    confirmed = sum(confirmed, na.rm = TRUE),
+    deaths = sum(deaths, na.rm = TRUE),
+    recovered = sum(recovered, na.rm = TRUE),
+    timestamp = fmode(timestamp)
+  ) %>%
+  mutate(
+    daily_confirmed = confirmed - lag(confirmed, n = 1),
+    daily_deaths = deaths - lag(deaths, n = 1),
+    daily_recovered = recovered - lag(recovered, n = 1)
+  ) %>%
+  mutate(
+    daily_confirmed = replace_na(daily_confirmed, 0),
+    daily_deaths = replace_na(daily_deaths, 0),
+    daily_recovered = replace_na(daily_recovered, 0)
+  ) %>%
+  ungroup() %>%
+  arrange(country, iso3c, date)
+
+add_world2 <- merged %>%
+  group_by(country, iso3c) %>%
+  summarize(
+    population = fmode(population),
+    land_area_skm = fmode(land_area_skm),
+    timestamp = fmode(timestamp)
+  ) %>%
+  ungroup() %>%
+  summarize(
+    country = "World", iso3c = NA,
+    population = sum(population, na.rm = TRUE),
+    land_area_skm = sum(land_area_skm, na.rm = TRUE)
+  ) %>%
+  mutate(pop_density = population / land_area_skm)
+
+add_world <- left_join(add_world1, add_world2, by = c("country", "iso3c"))
+merged <- bind_rows(merged, add_world)
+
+cv_data <- pivot_longer(merged,
+  cols = c(
+    "confirmed", "deaths", "recovered",
+    "daily_confirmed", "daily_deaths", "daily_recovered"
+  ),
+  names_to = "variable", values_to = "cases"
+) %>%
+  arrange(country, variable, date) %>%
+  rename(area = land_area_skm, density = pop_density) %>%
+  mutate(rate = cases / population * 10^6)
+
+cv_summary <- function(d, country_list = "World",
+                       plot = TRUE, facet = "country",
+                       status = c("confirmed", "deaths", "recovered")) {
+
+  # based on `wes_palettes()` GrandBudapest1, IsleofDogs1, IsleofDogs2
+  # from the {wesanderson} package
+  my_palette <- c(
+    "#5B1A18", "#FD6467", "#F1BB7B", "#D67236",
+    "#0F0D0E", "#9986A5", "#79402E", "#CCBA72", "#D9D0D3", "#8D8680",
+    "#EAD3BF", "#AA9486", "#B6854D", "#39312F", "#1C1718"
+  )
+
+  if (facet == "country") {
+    fill <- "variable"
+    n <- length(unique(d$variable)) / 2
+    # need only half of unique # of variable (3)
+  }
+
+  if (facet == "variable") {
+    fill <- "country"
+    n <- length(country_list)
+    # need number of countries
+  }
+
+  if ("All" %in% country_list) {
+    country_list <- unique(d$country)
+    country_list <- setdiff(country_list, "World")
+  }
+
+  if ("World" %in% country_list) {
+    d <- d %>% filter(country %in% country_list)
+
+    totals <- d %>%
+      group_by(variable) %>%
+      summarize(
+        country = "World",
+        cases = max(cases),
+        population = max(population),
+        area = max(area),
+        density = max(density),
+        rate = max(rate, na.rm = TRUE),
+        on = max(date)
+      ) %>%
+      select(country, variable, cases, population, area, density, rate, on) %>%
+      arrange(variable) %>%
+      ungroup()
+  }
+
+  if ("World" %nin% country_list) {
+    d <- d %>% filter(country %in% country_list)
+    totals <- d %>%
+      group_by(country, variable) %>%
+      summarize(
+        cases = max(cases),
+        population = max(population),
+        area = max(area),
+        density = max(density),
+        rate = max(rate, na.rm = TRUE),
+        on = max(date),
+        gdp_capita = fmode(gdp_capita),
+        income = fmode(income),
+        life_expectancy = fmode(life_expectancy),
+        max_sd = max(soc_dist),
+        max_mr = max(mov_rest)
+      ) %>%
+      select(
+        country, variable, cases, population, area, density, rate,
+        gdp_capita, income, life_expectancy, max_sd, max_mr, on
+      ) %>%
+      arrange(country, variable) %>%
+      ungroup()
+  }
+
+  if (plot == TRUE) {
+    cc <- filter(d, variable %in% status)
+    cum_cases_plot <- ggplot(
+      data = cc,
+      # use the tidy evaluation pronoun .data to slice the chosen fill
+      # variable from the data frame
+      aes(
+        x = date, y = cases + 1, color = .data[[fill]],
+        fill = .data[[fill]]
+      )
+    ) +
+      geom_point(size = 0.5) +
+      geom_line() +
+      # use the tidy evaluation pronoun .data to slice the chosen facet_wrap
+      # variable from the data frame
+      facet_wrap(~ .data[[facet]], ncol = 5) +
+      xlab("Date") +
+      ylab("Log Cumulative Cases") +
+      scale_y_log10(
+        breaks = trans_breaks("log10", function(x) 10^x),
+        labels = trans_format("log10", math_format(10^.x))
+      ) +
+      scale_color_manual(
+        aesthetics = c("color", "fill"),
+        name = NULL, values = my_palette
+      )
+
+    dc <- filter(d, variable %in% paste0("daily_", status))
+    daily_cases_plot <- ggplot(
+      data = dc,
+      aes(
+        x = date, y = cases, color = .data[[fill]],
+        fill = .data[[fill]]
+      )
+    ) +
+      geom_point(size = 0.5) +
+      geom_line() +
+      facet_wrap(~ .data[[facet]], ncol = 5) +
+      xlab("Date") +
+      ylab("Daily Cases") +
+      scale_color_manual(
+        aesthetics = c("color", "fill"),
+        name = NULL, values = my_palette
+      )
+  }
+
+  if (plot == TRUE) {
+    return(list(
+      totals = totals,
+      cum_cases_plot = cum_cases_plot,
+      daily_cases_plot = daily_cases_plot
+    ))
+  } else {
+    return(list(totals = totals))
+  }
+}
+```
+
 # Challenge 1
 
 ```{R}
-
+cv_summary(cv_data)
 ```
 
 # Challenge 2
 
 ```{R}
+cv_summary(cv_data, country_list = c("United States", "United Kingdom", "Canada", "France", "Italy", "Japan", "China", "Russia", "Iran"))
 
+cv_summary(cv_data, country_list = c("United States", "United Kingdom", "Canada", "France", "Italy", "Japan", "China", "Russia", "Iran"), facet = "variable")
 ```
 
 # Challenge 3
 
 ```{R}
+cv_summary(cv_data, country_list = "All", plot = FALSE)
 
+(d <- cv_data %>% filter(population > 1000000) %>% cv_summary(country_list = "All", plot = FALSE))
 ```
 
 # Challenge 4
 
 ```{R}
+(overall <- d$totals %>% filter(variable == "confirmed") %>% arrange(rate))
 
+(daily <- d$totals %>% filter(variable=="daily_confirmed") %>% arrange(rate))
 ```
 
 # Challenge 5
 
 ```{R}
+qqnorm(log(overall$rate)); qqline(log(overall$rate), col = 'red')
+qqnorm(log(overall$density)); qqline(log(overall$density), col = 'red')
+qqnorm(log(overall$population)); qqline(log(overall$population), col = 'red')
+qqnorm(log(overall$gdp_capita)); qqline(log(overall$gdp_capita), col = 'red')
 
+model <- lm(log(rate) ~ log(density) + log(population) + log(gdp_capita) + income, data = overall)
+summary(model)
 ```
 
 # Challenge 6
 
 ```{R}
+library(MASS)
 
+(s <- stepAIC(model, scope = . ~ ., direction = "both"))
+summary(s)
 ```
 
 # Challenge 7

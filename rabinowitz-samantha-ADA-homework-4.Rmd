@@ -1,0 +1,58 @@
+---
+title: "Homework 4"
+author: "Samantha Rabinowitz, sar4357"
+date: "5/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Challenge 1
+
+```{R}
+
+```
+
+# Challenge 2
+
+```{R}
+
+```
+
+# Challenge 3
+
+```{R}
+
+```
+
+# Challenge 4
+
+```{R}
+
+```
+
+# Challenge 5
+
+```{R}
+
+```
+
+# Challenge 6
+
+```{R}
+
+```
+
+# Challenge 7
+
+```{R}
+
+```
+
+# Challenge 8
+
+```{R}
+
+```

@@ -268,16 +268,41 @@ summary(model)
 
 ```{R}
 library(MASS)
+library(MuMIn)
 
 (s <- stepAIC(model, scope = . ~ ., direction = "both"))
 summary(s)
+
+r.squaredGLMM(s)
+
+r.squaredGLMM(model)
+
+daily_model <- lm(rate ~ log(density) + log(population) + log(gdp_capita) + income, data = daily)
+
+(s_daily <- stepAIC(daily_model, scope = . ~ ., direction = "both"))
+summary(s_daily)
+
+r.squaredGLMM(s_daily)
+
+r.squaredGLMM(daily_model)
 ```
+
+After performing stepwise selection using AIC and generating the pseudo-R^2 values for the full and "best" models, the same two important predictors were determined for the overall data and the data for maximum daily infection rate - population density and gross domestic product per capita. 
 
 # Challenge 7
 
 ```{R}
+new_model <- lm(rate ~ log(density) + log(gdp_capita) + max_mr + max_sd, data = daily)
+summary(new_model)
 
+(s_new <- stepAIC(new_model, scope = . ~ ., direction = "both"))
+
+r.squaredGLMM(s_new)
+
+r.squaredGLMM(s_daily)
 ```
+
+As demonstrated by the stepwise selection using AIC above with a model containing the *max_sd* and *max_mr* variables added to the variables previously determined to be the most important predictors of maximum daily infection rate, adding *max_mr* to the model does result in a lower AIC (1303.66) as compared to the one generated using *log(density)* and *log(gdp_capita)* (1313.6). Additionally, the pseudo-R^2 values are also increased in the model using *max_mr* as an additional predictor variable.
 
 # Challenge 8
 

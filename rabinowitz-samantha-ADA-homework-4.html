@@ -571,7 +571,9 @@ summary {
 <pre><code>## The following object is masked from 'package:dplyr':
 ## 
 ##     select</code></pre>
-<pre class="r"><code>(s &lt;- stepAIC(model, scope = . ~ ., direction = &quot;both&quot;))</code></pre>
+<pre class="r"><code>library(MuMIn)
+
+(s &lt;- stepAIC(model, scope = . ~ ., direction = &quot;both&quot;))</code></pre>
 <pre><code>## Start:  AIC=108.3
 ## log(rate) ~ log(density) + log(population) + log(gdp_capita) + 
 ##     income
@@ -632,9 +634,143 @@ summary {
 ##   (5 observations deleted due to missingness)
 ## Multiple R-squared:  0.5981, Adjusted R-squared:  0.5926 
 ## F-statistic: 108.6 on 2 and 146 DF,  p-value: &lt; 2.2e-16</code></pre>
+<pre class="r"><code>r.squaredGLMM(s)</code></pre>
+<pre><code>## Warning: 'r.squaredGLMM' now calculates a revised statistic. See the help page.</code></pre>
+<pre><code>##            R2m       R2c
+## [1,] 0.5948336 0.5948336</code></pre>
+<pre class="r"><code>r.squaredGLMM(model)</code></pre>
+<pre><code>##            R2m       R2c
+## [1,] 0.6009867 0.6009867</code></pre>
+<pre class="r"><code>daily_model &lt;- lm(rate ~ log(density) + log(population) + log(gdp_capita) + income, data = daily)
+
+(s_daily &lt;- stepAIC(daily_model, scope = . ~ ., direction = &quot;both&quot;))</code></pre>
+<pre><code>## Start:  AIC=1317.57
+## rate ~ log(density) + log(population) + log(gdp_capita) + income
+## 
+##                   Df Sum of Sq    RSS    AIC
+## - income           3     19259 911124 1314.8
+## - log(population)  1      4119 895983 1316.3
+## &lt;none&gt;                         891865 1317.6
+## - log(density)     1     26109 917974 1319.9
+## - log(gdp_capita)  1     40396 932260 1322.2
+## 
+## Step:  AIC=1314.77
+## rate ~ log(density) + log(population) + log(gdp_capita)
+## 
+##                   Df Sum of Sq     RSS    AIC
+## - log(population)  1      5077  916200 1313.6
+## &lt;none&gt;                          911124 1314.8
+## - log(density)     1     28932  940055 1317.5
+## + income           3     19259  891865 1317.6
+## - log(gdp_capita)  1    223451 1134575 1345.7
+## 
+## Step:  AIC=1313.6
+## rate ~ log(density) + log(gdp_capita)
+## 
+##                   Df Sum of Sq     RSS    AIC
+## &lt;none&gt;                          916200 1313.6
+## + log(population)  1      5077  911124 1314.8
+## - log(density)     1     26609  942809 1315.9
+## + income           3     20217  895983 1316.3
+## - log(gdp_capita)  1    234216 1150417 1345.8</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = rate ~ log(density) + log(gdp_capita), data = daily)
+## 
+## Coefficients:
+##     (Intercept)     log(density)  log(gdp_capita)  
+##         -226.49            10.11            26.67</code></pre>
+<pre class="r"><code>summary(s_daily)</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = rate ~ log(density) + log(gdp_capita), data = daily)
+## 
+## Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -111.46  -38.73  -12.48   15.61  630.82 
+## 
+## Coefficients:
+##                 Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept)     -226.488     42.449  -5.335 3.53e-07 ***
+## log(density)      10.108      4.892   2.066   0.0406 *  
+## log(gdp_capita)   26.672      4.351   6.130 7.69e-09 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Residual standard error: 78.95 on 147 degrees of freedom
+##   (4 observations deleted due to missingness)
+## Multiple R-squared:  0.2276, Adjusted R-squared:  0.2171 
+## F-statistic: 21.66 on 2 and 147 DF,  p-value: 5.697e-09</code></pre>
+<pre class="r"><code>r.squaredGLMM(s_daily)</code></pre>
+<pre><code>##            R2m       R2c
+## [1,] 0.2252509 0.2252509</code></pre>
+<pre class="r"><code>r.squaredGLMM(daily_model)</code></pre>
+<pre><code>##            R2m       R2c
+## [1,] 0.2405453 0.2405453</code></pre>
+<p>After performing stepwise selection using AIC and generating the pseudo-R^2 values for the full and “best” models, the same two important predictors were determined for the overall data and the data for maximum daily infection rate - population density and gross domestic product per capita.</p>
 </div>
 <div id="challenge-7" class="section level1">
 <h1>Challenge 7</h1>
+<pre class="r"><code>new_model &lt;- lm(rate ~ log(density) + log(gdp_capita) + max_mr + max_sd, data = daily)
+summary(new_model)</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = rate ~ log(density) + log(gdp_capita) + max_mr + 
+##     max_sd, data = daily)
+## 
+## Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -114.26  -34.48  -12.35   14.36  637.90 
+## 
+## Coefficients:
+##                  Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept)     -228.0316    42.4051  -5.377 2.98e-07 ***
+## log(density)      10.9511     4.9196   2.226   0.0276 *  
+## log(gdp_capita)   26.8444     4.4693   6.006 1.48e-08 ***
+## max_mr            -1.4192     0.8674  -1.636   0.1040    
+## max_sd             1.6763     1.4267   1.175   0.2420    
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Residual standard error: 78.27 on 144 degrees of freedom
+##   (5 observations deleted due to missingness)
+## Multiple R-squared:  0.2549, Adjusted R-squared:  0.2343 
+## F-statistic: 12.32 on 4 and 144 DF,  p-value: 1.214e-08</code></pre>
+<pre class="r"><code>(s_new &lt;- stepAIC(new_model, scope = . ~ ., direction = &quot;both&quot;))</code></pre>
+<pre><code>## Start:  AIC=1304.24
+## rate ~ log(density) + log(gdp_capita) + max_mr + max_sd
+## 
+##                   Df Sum of Sq     RSS    AIC
+## - max_sd           1      8457  890619 1303.7
+## &lt;none&gt;                          882162 1304.2
+## - max_mr           1     16400  898562 1305.0
+## - log(density)     1     30355  912517 1307.3
+## - log(gdp_capita)  1    221012 1103173 1335.5
+## 
+## Step:  AIC=1303.66
+## rate ~ log(density) + log(gdp_capita) + max_mr
+## 
+##                   Df Sum of Sq     RSS    AIC
+## &lt;none&gt;                          890619 1303.7
+## - max_mr           1     14187  904806 1304.0
+## + max_sd           1      8457  882162 1304.2
+## - log(density)     1     33768  924387 1307.2
+## - log(gdp_capita)  1    252170 1142789 1338.8</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = rate ~ log(density) + log(gdp_capita) + max_mr, 
+##     data = daily)
+## 
+## Coefficients:
+##     (Intercept)     log(density)  log(gdp_capita)           max_mr  
+##        -229.914           11.498           27.987           -1.313</code></pre>
+<pre class="r"><code>r.squaredGLMM(s_new)</code></pre>
+<pre><code>##           R2m      R2c
+## [1,] 0.244007 0.244007</code></pre>
+<pre class="r"><code>r.squaredGLMM(s_daily)</code></pre>
+<pre><code>##            R2m       R2c
+## [1,] 0.2252509 0.2252509</code></pre>
+<p>As demonstrated by the stepwise selection using AIC above with a model containing the <em>max_sd</em> and <em>max_mr</em> variables added to the variables previously determined to be the most important predictors of maximum daily infection rate, adding <em>max_mr</em> to the model does result in a lower AIC (1303.66) as compared to the one generated using <em>log(density)</em> and <em>log(gdp_capita)</em> (1313.6). Additionally, the pseudo-R^2 values are also increased in the model using <em>max_mr</em> as an additional predictor variable.</p>
 </div>
 <div id="challenge-8" class="section level1">
 <h1>Challenge 8</h1>

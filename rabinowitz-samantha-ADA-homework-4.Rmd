@@ -26,6 +26,13 @@ merged <- download_merged_data(cached = TRUE)
 merged <- merged %>%
   group_by(country, iso3c) %>%
   arrange(country, iso3c, date) %>%
+  ## new code to replace NAs with zeros
+  mutate(
+    confirmed = ifelse(is.na(confirmed), 0, confirmed),
+    deaths = ifelse(is.na(deaths), 0, deaths),
+    recovered = ifelse(is.na(recovered), 0, recovered)
+  ) %>%
+  ## end of new code
   mutate(
     daily_confirmed = confirmed - lag(confirmed, n = 1),
     daily_deaths = deaths - lag(deaths, n = 1),
@@ -89,7 +96,10 @@ cv_data <- pivot_longer(merged,
 ) %>%
   arrange(country, variable, date) %>%
   rename(area = land_area_skm, density = pop_density) %>%
-  mutate(rate = cases / population * 10^6)
+  mutate(rate = cases / population * 10^6) %>%
+  ## new code to omit data before 2020-05-11
+  filter(date < "2020-05-11")
+## end of new code
 
 cv_summary <- function(d, country_list = "World",
                        plot = TRUE, facet = "country",
@@ -239,36 +249,44 @@ cv_summary(cv_data, country_list = c("United States", "United Kingdom", "Canada"
 # Challenge 3
 
 ```{R}
-cv_summary(cv_data, country_list = "All", plot = FALSE)
-
 (d <- cv_data %>% filter(population > 1000000) %>% cv_summary(country_list = "All", plot = FALSE))
 ```
+
+The tibble defined above, **d**, contains summary data for all **94** countries in the dataset that had populations over 1,000,000.
 
 # Challenge 4
 
 ```{R}
-(overall <- d$totals %>% filter(variable == "confirmed") %>% arrange(rate))
+(overall <- d$totals %>% filter(variable == "confirmed") %>% arrange(desc(rate)))
 
-(daily <- d$totals %>% filter(variable=="daily_confirmed") %>% arrange(rate))
+(daily <- d$totals %>% filter(variable=="daily_confirmed") %>% arrange(desc(rate)))
 ```
+
+The 10 countries with the highest overall rate of confirmed cases are Qatar, Spain, Ireland, Belgium, Singapore, United States, Italy, Switzerland, United Kingdom, and Bahrain.
+
+The 10 countries with the highest single day rate of confirmed cases are Ecuador, Qatar, France, Ireland, Kuwait, Singapore, Belgium, Bahrain, Spain, and Belarus.
+
 
 # Challenge 5
 
 ```{R}
-qqnorm(log(overall$rate)); qqline(log(overall$rate), col = 'red')
+qqnorm(overall$rate); qqline(log(overall$rate), col = 'red')
 qqnorm(log(overall$density)); qqline(log(overall$density), col = 'red')
 qqnorm(log(overall$population)); qqline(log(overall$population), col = 'red')
 qqnorm(log(overall$gdp_capita)); qqline(log(overall$gdp_capita), col = 'red')
 
-model <- lm(log(rate) ~ log(density) + log(population) + log(gdp_capita) + income, data = overall)
+model <- lm(rate ~ log(density) + log(population) + log(gdp_capita) + income, data = overall)
 summary(model)
 ```
+
+In the model above, the predictor variables with slopes significantly different from 0 are population density, GDP per capita, and Low overall income level. 
 
 # Challenge 6
 
 ```{R}
 library(MASS)
 library(MuMIn)
+
 
 (s <- stepAIC(model, scope = . ~ ., direction = "both"))
 summary(s)
@@ -281,13 +299,11 @@ daily_model <- lm(rate ~ log(density) + log(population) + log(gdp_capita) + inco
 
 (s_daily <- stepAIC(daily_model, scope = . ~ ., direction = "both"))
 summary(s_daily)
-
-r.squaredGLMM(s_daily)
-
-r.squaredGLMM(daily_model)
 ```
 
-After performing stepwise selection using AIC and generating the pseudo-R^2 values for the full and "best" models, the same two important predictors were determined for the overall data and the data for maximum daily infection rate - population density and gross domestic product per capita. 
+Performing stepwise selection using AIC determined that a somewhat more nested model is the preferred model for predicting overall infection rate. This model contains the predictors log(density), log(gdp_capita), and income. The pseudo R2 value associated with the full model is 0.4610 and the value associated with the "best" model described above is 0.4626.
+
+After using AIC to determine the preferred model for the maximum daily infection rate, it was revealed that the set of predictors that best describes rate in this model are only log(density) and log(gdp_capita). Income level is no longer a predictor determined to be important in this model.
 
 # Challenge 7
 
@@ -300,12 +316,44 @@ summary(new_model)
 r.squaredGLMM(s_new)
 
 r.squaredGLMM(s_daily)
+
+detach(package:MASS)
+detach(package:MuMIn)
 ```
 
-As demonstrated by the stepwise selection using AIC above with a model containing the *max_sd* and *max_mr* variables added to the variables previously determined to be the most important predictors of maximum daily infection rate, adding *max_mr* to the model does result in a lower AIC (1303.66) as compared to the one generated using *log(density)* and *log(gdp_capita)* (1313.6). Additionally, the pseudo-R^2 values are also increased in the model using *max_mr* as an additional predictor variable.
+As demonstrated by the stepwise selection using AIC above with a model containing the *max_sd* and *max_mr* variables added to the variables previously determined to be the most important predictors of maximum daily infection rate, adding *max_mr* to the model does result in a lower AIC (1303.57) as compared to the one generated using *log(density)* and *log(gdp_capita)* (1313.6). Additionally, the pseudo-R^2 values are also increased in the model using *max_mr* as an additional predictor variable (0.2253 in the model prior to adding the additional variable, 0.2445 in the model with the additional variable).
 
 # Challenge 8
 
 ```{R}
+library(lme4)
 
+m1 <- lmer(data = cv_data, rate ~ log(density) + log(gdp_capita) + soc_dist + mov_rest + (1 | country) + (1 | date), REML=FALSE)
+m2 <- lmer(data = cv_data, rate ~ log(density) + log(gdp_capita) + soc_dist + (1 | country) + (1 | date), REML=FALSE)
+m3 <- lmer(data = cv_data, rate ~ log(density) + log(gdp_capita) + mov_rest + (1 | country) + (1 | date), REML=FALSE)
+m4 <- lmer(data = cv_data, rate ~ log(density) + soc_dist + mov_rest + (1 | country) + (1 | date), REML=FALSE)
+m5 <- lmer(data = cv_data, rate ~ log(gdp_capita) + soc_dist + mov_rest + (1 | country) + (1 | date), REML=FALSE)
+m6 <- lmer(data = cv_data, rate ~ log(density) + log(gdp_capita) + (1 | country) + (1 | date), REML=FALSE)
+m7 <- lmer(data = cv_data, rate ~ log(density) + soc_dist + (1 | country) + (1 | date), REML=FALSE)
+m8 <- lmer(data = cv_data, rate ~ log(density) + mov_rest + (1 | country) + (1 | date), REML=FALSE)
+m9 <- lmer(data = cv_data, rate ~ log(gdp_capita) + soc_dist + (1 | country) + (1 | date), REML=FALSE)
+m10 <- lmer(data = cv_data, rate ~ log(gdp_capita) + mov_rest + (1 | country) + (1 | date), REML=FALSE)
+m11 <- lmer(data = cv_data, rate ~ soc_dist + mov_rest + (1 | country) + (1 | date), REML=FALSE)
+m12 <- lmer(data = cv_data, rate ~ log(density) + (1 | country) + (1 | date), REML=FALSE)
+m13 <- lmer(data = cv_data, rate ~ log(gdp_capita) + (1 | country) + (1 | date), REML=FALSE)
+m14 <- lmer(data = cv_data, rate ~ soc_dist + (1 | country) + (1 | date), REML=FALSE)
+m15 <- lmer(data = cv_data, rate ~ mov_rest + (1 | country) + (1 | date), REML=FALSE)
+null <- lmer(data = cv_data, rate ~ (1 | country) + (1 | date), REML=FALSE)
+
+library(AICcmodavg)
+
+(aic_table <- aictab(list(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11,m12,m13,m14,m15,null),
+  modnames = c("m1","m2","m3","m4","m5","m6","m7","m8","m9","m10","m11","m12","m13","m14","m15","null")
+))
+
+library(MuMIn)
+
+r.squaredGLMM(m1)
 ```
+
+After performing a set of mixed effects models, it was determined that the best model of the complete set that was run was the "full" model (called **m1** above). This model included 4 fixed effects (log(density), log(gdp_capita), soc_dist, and mov_rest) and 2 random effects (country and date). The pseudo R2 values associated with this model are 0.03 (marginal R2) and 0.126 (conditional R2).
